@@ -19,6 +19,7 @@ import tempfile
 import shutil
 import subprocess
 import traceback
+import json
 
 code_pipeline = boto3.client('codepipeline')
 
@@ -35,7 +36,7 @@ def setup(event):
     #output_artifact = job_data['outputArtifacts'][0]
     #to_bucket = output_artifact['location']['s3Location']['bucketName']
     #to_key = output_artifact['location']['s3Location']['objectKey']
-    user_parameters = config['UserParameters']
+    user_parameters = json.loads(config['UserParameters'])
 
     # Temporary credentials to access CodePipeline artifact in S3
     key_id = credentials['accessKeyId']
@@ -62,7 +63,9 @@ def handler(event, context):
         (job_id, s3, from_bucket, from_key, from_revision,
          user_parameters) = setup(event)
 
-        to_bucket = user_parameters
+        to_bucket = user_parameters.bucket
+
+        distribution_ids = user_parameters.distributions
 
         # Directories for source content, and transformed static site
         source_dir = tempfile.mkdtemp()
@@ -72,6 +75,9 @@ def handler(event, context):
 
         # Generate static website from source
         upload_static_site(source_dir, to_bucket)
+
+        #invalidate cloudfront distribution
+        invalidate_cloudfront(distribution_ids)
 
         # Tell CodePipeline we succeeded
         code_pipeline.put_job_success_result(jobId=job_id)
@@ -93,3 +99,10 @@ def upload_static_site(source_dir, to_bucket):
                source_dir + "/", "s3://" + to_bucket + "/"]
     print(command)
     print(subprocess.check_output(command, stderr=subprocess.STDOUT))
+
+def invalidate_cloudfront(distribution_ids):
+    # invalidate the 2 distributions
+    for distribution in distribution_ids:
+        command = ["./aws", "cloudfront", "create-invalidation", "--distribution-id", distribution, "--paths", "'*'"]
+        print(command)
+        print(subprocess.check_output(command, stderr=subprocess.STDOUT))
