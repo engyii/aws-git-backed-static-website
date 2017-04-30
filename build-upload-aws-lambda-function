@@ -2,13 +2,14 @@
 #
 # Build AWS Lambda function ZIP file and upload to S3
 #
-# Usage: ./build-upload-aws-lambda-function S3BUCKET S3KEY
+# Usage: ./build-upload-aws-lambda-function S3BUCKET S3REGION S3KEY
 #
-# ./build-upload-aws-lambda-function run.alestic.com lambda/aws-lambda-git-backed-static-website.zip
+# ./build-upload-aws-lambda-function run.alestic.com us-west-1 lambda/aws-lambda-git-backed-static-website.zip
 #
 
 s3bucket=${1:?Specify target S3 bucket name}
-s3key=${2:?Specify target S3 key}
+s3region=${2:?Specify target S3 region}
+s3key=${3:?Specify target S3 key}
 target=s3://$s3bucket/$s3key
 
 tmpdir=$(mktemp -d /tmp/lambda-XXXXXX)
@@ -33,7 +34,7 @@ rsync -va aws-git-backed-static-website-lambda.py $tmpdir/index.py
 (cd $tmpdir; zip -r9 $zipfile index.py)
 
 # Upload to S3
-aws s3 cp --acl=public-read $zipfile $target
+aws s3 cp --acl=public-read $zipfile $target --region $s3region
 
 # Clean up
 rm -rf $tmpdir
