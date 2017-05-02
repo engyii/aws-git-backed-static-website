@@ -375,11 +375,10 @@ Resources:
                   - !Join ["", ["arn:aws:s3:::", !If [NeedsNewSiteBucket, !Ref SiteBucket, !Ref PreExistingSiteBucket], "/*"]]
                   - !Join ["", ["arn:aws:s3:::", !If [NeedsNewCodePipelineBucket, !Ref CodePipelineBucket, !Ref PreExistingCodePipelineBucket], "/*"]]
               - Effect: Allow
-                Action:
-                  - cloudfront:*
+                Action: "cloudfront:*"
                 Resource:
-                  - !Join ["", ["arn:aws:cloudfront::${AWS::AccountId}:distribution/", !Ref RedirectCloudFrontDistribution]]
-                  - !Join ["", ["arn:aws:cloudfront::${AWS::AccountId}:distribution/", !Ref CloudFrontDistribution]]
+                  - !Join ["", [!Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/", !Ref RedirectCloudFrontDistribution]]
+                  - !Join ["", [!Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/", !Ref CloudFrontDistribution]]
 
   GeneratorLambdaFunction:
     Type: "AWS::Lambda::Function"
@@ -485,7 +484,7 @@ Resources:
                 Version: 1
               Configuration:
                 FunctionName: !Ref SyncLambdaFunction
-                UserParameters: !Join ["", ["{ 'bucket': '", !If [NeedsNewSiteBucket, !Ref SiteBucket, !Ref PreExistingSiteBucket], "','distributions':[",!Ref CloudFrontDistribution,!Ref RedirectCloudFrontDistribution,"]}"]]
+                UserParameters: !Join ["", ["{ \"bucket\": \"", !If [NeedsNewSiteBucket, !Ref SiteBucket, !Ref PreExistingSiteBucket], "\",\"distributions\":[\"",!Ref CloudFrontDistribution,"\",\"",!Ref RedirectCloudFrontDistribution,"\"]}"]]
               RunOrder: 1
 
 Mappings:
