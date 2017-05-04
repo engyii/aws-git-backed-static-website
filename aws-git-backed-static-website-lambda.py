@@ -20,8 +20,10 @@ import shutil
 import subprocess
 import traceback
 import json
+import time
 
 code_pipeline = boto3.client('codepipeline')
+cloudfront = boto3.client('cloudfront')
 
 def setup(event):
     # Extract attributes passed in by CodePipeline
@@ -104,6 +106,16 @@ def upload_static_site(source_dir, to_bucket):
 def invalidate_cloudfront(distribution_ids):
     # invalidate the 2 distributions
     for distribution in distribution_ids:
-        command = ["./aws", "cloudfront", "create-invalidation", "--distribution-id", "" + distribution, "--paths", "'*'"]
-        print(command)
-        print(subprocess.check_output(command, stderr=subprocess.STDOUT))
+        response = cloudfront.create_invalidation(
+            DistributionId=distribution,
+            InvalidationBatch={
+                'Paths': {
+                    'Quantity': 1,
+                    'Items': [
+                        '/*',
+                    ]
+                },
+                'CallerReference': 'lambda-invalidate_cloudfront' + str(int(time.time()))
+            }
+        )
+        print(response)

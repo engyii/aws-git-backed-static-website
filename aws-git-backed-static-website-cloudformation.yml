@@ -39,7 +39,7 @@ Parameters:
   DefaultTTL:
     Type: Number
     Description: "TTL in seconds"
-    Default: 30
+    Default: 86400
 
   MinimumTTL:
     Description: "Minimum cache lifetime in seconds for the CloudFront distribution"
@@ -58,7 +58,7 @@ Parameters:
   GeneratorLambdaFunctionS3Bucket:
     Type: String
     Description: "S3 bucket containing ZIP of AWS Lambda function (static site generator)"
-    Default: "run.alestic.com"
+    Default: "run2.engyzone.net"
 
   GeneratorLambdaFunctionS3Key:
     Type: String
@@ -90,7 +90,7 @@ Parameters:
   SyncLambdaFunctionS3Bucket:
     Type: String
     Description: "S3 bucket containing ZIP of AWS Lambda function (sync to S3)"
-    Default: "run.alestic.com"
+    Default: "run2.engyzone.net"
 
   SyncLambdaFunctionS3Key:
     Type: String
@@ -101,6 +101,14 @@ Parameters:
     Description: "Optional Git repository name for pre-existing CodeCommit repository. Leave empty to have CodeCommit Repository created and managed by this stack."
     Type: String
     Default: ""
+
+  GitRepositoryProvider:
+    Description: "Git Source Provider"
+    Default: CodeCommit
+    AllowedValues:
+      - CodeCommit
+      - GitHub
+    Type: String
 
   PreExistingHostedZoneDomain:
     Description: "Optional domain name for pre-existing Route 53 hosted zone. Leave empty to have hosted zone created and managed by this stack."
@@ -205,6 +213,7 @@ Resources:
         Aliases:
           - !Ref DomainName
         DefaultRootObject: index.html
+        HttpVersion: http2
         PriceClass: !Ref PriceClass
         Origins:
           -
@@ -242,6 +251,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
+        HttpVersion: http2
         Aliases:
           - !If [NeedsNewRedirectBucket, !Ref RedirectBucket, !Ref PreExistingRedirectBucket]
         PriceClass: PriceClass_100
@@ -376,9 +386,7 @@ Resources:
                   - !Join ["", ["arn:aws:s3:::", !If [NeedsNewCodePipelineBucket, !Ref CodePipelineBucket, !Ref PreExistingCodePipelineBucket], "/*"]]
               - Effect: Allow
                 Action: "cloudfront:*"
-                Resource:
-                  - !Join ["", [!Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/", !Ref RedirectCloudFrontDistribution]]
-                  - !Join ["", [!Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/", !Ref CloudFrontDistribution]]
+                Resource: "*"
 
   GeneratorLambdaFunction:
     Type: "AWS::Lambda::Function"
@@ -448,7 +456,7 @@ Resources:
               ActionTypeId:
                 Category: Source
                 Owner: AWS
-                Provider: CodeCommit
+                Provider: !If [NeedsNewGitRepository, "CodeCommit", !Ref GitRepositoryProvider]
                 Version: 1
               Configuration:
                 RepositoryName: !If [NeedsNewGitRepository, !Ref DomainName, !Ref PreExistingGitRepository]
@@ -596,6 +604,7 @@ Metadata:
           default: PreExisting Resources To Use (Leave empty for stack to create and manage)
         Parameters:
           - PreExistingGitRepository
+          - GitRepositoryProvider
           - PreExistingHostedZoneDomain
           - PreExistingSiteBucket
           - PreExistingRedirectBucket
