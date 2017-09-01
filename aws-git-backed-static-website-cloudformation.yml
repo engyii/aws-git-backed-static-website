@@ -27,6 +27,15 @@ Parameters:
     AllowedPattern: "[a-z0-9]+[-.a-z0-9]*(\\.[a-z][a-z]+)+"
     ConstraintDescription: "Provide a valid domain name using only lowercase letters, numbers, and dash (-)"
 
+
+  WantsWWW:
+    Description: "Build www redirection"
+    Default: Yes
+    AllowedValues:
+      - Yes
+      - No
+    Type: String
+
   # Email address to receive Git activity notifications: you@anotherdomain.com
   # CANNOT be in same domain!
   NotificationEmail:
@@ -35,6 +44,7 @@ Parameters:
     MinLength: 6
     AllowedPattern: ".+@[a-z0-9]+[-.a-z0-9]*(\\.[a-z][a-z]+)+"
     ConstraintDescription: "Provide a valid email address"
+    Default: "aws-notification@en.gy"
 
   DefaultTTL:
     Type: Number
@@ -63,7 +73,7 @@ Parameters:
   GeneratorLambdaFunctionS3Key:
     Type: String
     Description: "S3 key containing ZIP of AWS Lambda function (static site generator)"
-    Default: "lambda/aws-lambda-site-generator-identity.zip"
+    Default: "lambda/aws-lambda-site-generator-hugo-0.26.zip"
 
   GeneratorLambdaFunctionRuntime:
     Type: String
@@ -102,16 +112,8 @@ Parameters:
     Type: String
     Default: ""
 
-  GitRepositoryProvider:
-    Description: "Git Source Provider"
-    Default: CodeCommit
-    AllowedValues:
-      - CodeCommit
-      - GitHub
-    Type: String
-
   PreExistingHostedZoneDomain:
-    Description: "Optional domain name for pre-existing Route 53 hosted zone. Leave empty to have hosted zone created and managed by this stack."
+    Description: "Optional domain name for pre-existing Route 53 hosted zone. Leave e   mpty to have hosted zone created and managed by this stack."
     Type: String
     Default: ""
 
@@ -136,10 +138,12 @@ Parameters:
     Default: ""
 
 Conditions:
+  NeedsRedirect: !Equals [!Ref WantsWWW, "Yes"]
+  NoRedirect: !Equals [!Ref WantsWWW, "No"]
   NeedsNewGitRepository: !Equals [!Ref PreExistingGitRepository, ""]
   NeedsNewHostedZone: !Equals [!Ref PreExistingHostedZoneDomain, ""]
   NeedsNewSiteBucket: !Equals [!Ref PreExistingSiteBucket, ""]
-  NeedsNewRedirectBucket: !Equals [!Ref PreExistingRedirectBucket, ""]
+  NeedsNewRedirectBucket: !And [!Equals [!Ref PreExistingRedirectBucket, ""], !Equals [!Ref WantsWWW, "Yes"]]
   NeedsNewLogsBucket: !Equals [!Ref PreExistingLogsBucket, ""]
   NeedsNewCodePipelineBucket: !Equals [!Ref PreExistingCodePipelineBucket, ""]
 
@@ -247,6 +251,7 @@ Resources:
 
   # CDN serves S3 content over HTTPS for www.example.com
   RedirectCloudFrontDistribution:
+    Condition: NeedsRedirect
     Type: "AWS::CloudFront::Distribution"
     Properties:
       DistributionConfig:
@@ -293,7 +298,9 @@ Resources:
         Comment: !Sub "Created by CloudFormation stack: ${AWS::StackName}"
       Name: !Ref DomainName
     DeletionPolicy: Retain
+
   Route53RecordSetGroup:
+    Condition: NeedsRedirect
     Type: "AWS::Route53::RecordSetGroup"
     Properties:
       HostedZoneId: !If [NeedsNewHostedZone, !Ref Route53HostedZone, !Ref "AWS::NoValue"]
@@ -314,8 +321,24 @@ Resources:
             HostedZoneId: Z2FDTNDATAQYW2 # CloudFront
             DNSName: !GetAtt RedirectCloudFrontDistribution.DomainName
 
+  Route53RecordSetGroup:
+    Condition: NoRedirect
+    Type: "AWS::Route53::RecordSetGroup"
+    Properties:
+      HostedZoneId: !If [NeedsNewHostedZone, !Ref Route53HostedZone, !Ref "AWS::NoValue"]
+      HostedZoneName: !If [NeedsNewHostedZone, !Ref "AWS::NoValue", !Sub "${PreExistingHostedZoneDomain}."]
+      RecordSets:
+        # example.com
+        - Name: !Sub "${DomainName}."
+          Type: A
+          # Resolve to CloudFront distribution
+          AliasTarget:
+            HostedZoneId: Z2FDTNDATAQYW2 # CloudFront
+            DNSName: !GetAtt CloudFrontDistribution.DomainName
+
   # SNS topic for Git repository activity. Email subscription
   NotificationTopic:
+    Condition: NeedsNewGitRepository
     Type: "AWS::SNS::Topic"
     Properties:
       DisplayName: !Sub "Activity in ${DomainName} Git repository"
@@ -456,7 +479,7 @@ Resources:
               ActionTypeId:
                 Category: Source
                 Owner: AWS
-                Provider: !If [NeedsNewGitRepository, "CodeCommit", !Ref GitRepositoryProvider]
+                Provider: CodeCommit
                 Version: 1
               Configuration:
                 RepositoryName: !If [NeedsNewGitRepository, !Ref DomainName, !Ref PreExistingGitRepository]
@@ -492,7 +515,7 @@ Resources:
                 Version: 1
               Configuration:
                 FunctionName: !Ref SyncLambdaFunction
-                UserParameters: !Join ["", ["{ \"bucket\": \"", !If [NeedsNewSiteBucket, !Ref SiteBucket, !Ref PreExistingSiteBucket], "\",\"distributions\":[\"",!Ref CloudFrontDistribution,"\",\"",!Ref RedirectCloudFrontDistribution,"\"]}"]]
+                UserParameters: !Join ["", ["{ \"bucket\": \"", !If [NeedsNewSiteBucket, !Ref SiteBucket, !Ref PreExistingSiteBucket], "\",\"distributions\":[\"",!Ref CloudFrontDistribution, !If [NeedsRedirect, "\",\"", ""], !If [NeedsRedirect, !Ref RedirectCloudFrontDistribution, ""] ,"\"]}"]]
               RunOrder: 1
 
 Mappings:
@@ -556,7 +579,7 @@ Outputs:
     Value: !Ref CloudFrontDistribution
   RedirectCloudFrontDomain:
     Description: Redirect CloudFront distribution domain name
-    Value: !Ref RedirectCloudFrontDistribution
+    Value: !If [NeedsRedirect, !Ref RedirectCloudFrontDistribution, "N/A"]
   CodePipelineArn:
     Description: CodePipeline ARN
     Value: !Ref CodePipeline
@@ -577,6 +600,7 @@ Metadata:
           default: Website and Git repository
         Parameters:
           - DomainName
+          - WantsWWW
       - Label:
           default: Git Activity
         Parameters:
@@ -604,7 +628,6 @@ Metadata:
           default: PreExisting Resources To Use (Leave empty for stack to create and manage)
         Parameters:
           - PreExistingGitRepository
-          - GitRepositoryProvider
           - PreExistingHostedZoneDomain
           - PreExistingSiteBucket
           - PreExistingRedirectBucket
