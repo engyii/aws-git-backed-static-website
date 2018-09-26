@@ -98,10 +98,24 @@ def handler(event, context):
 
 def upload_static_site(source_dir, to_bucket):
     # Sync Git branch contents to S3 bucket
-    command = ["./aws", "s3", "sync", "--acl", "public-read", "--delete",
-               source_dir + "/", "s3://" + to_bucket + "/"]
-    print(command)
-    print(subprocess.check_output(command, stderr=subprocess.STDOUT))
+    command1 = ["./aws", "s3", "rm", "s3://" + to_bucket + "/", "--recursive"]
+    print(command1)
+    print(subprocess.check_output(command1, stderr=subprocess.STDOUT))
+    
+    command2 = ["./aws", "s3", "sync", "--acl", "public-read", 
+                "--include", "*", "--exclude", "*.jpg", "--exclude", "*.png", "--exclude", "*.gif", "--exclude", "*.svg", "--exclude", "*.ttf", "--exclude", "*.woff", "--exclude", "*.woff2",
+                "--exclude", "*.otf", "--exclude", "*.js", "--exclude", "*.css", "--exclude", "*.eot", "--exclude", "*.ico", 
+                source_dir + "/", "s3://" + to_bucket + "/"]
+    print(command2)
+    print(subprocess.check_output(command2, stderr=subprocess.STDOUT))
+
+    command3 = ["./aws", "s3", "sync", "--acl", "public-read", 
+                "--exclude", "*", "--include", "*.jpg", "--include", "*.png", "--include", "*.gif", "--include", "*.svg", "--include", "*.ttf", "--include", "*.woff", "--include", "*.woff2",
+                "--include", "*.otf", "--include", "*.js", "--include", "*.css", "--include", "*.eot", "--include", "*.ico",
+                "--cache-control", "max-age=608400, public",
+                source_dir + "/", "s3://" + to_bucket + "/"]
+    print(command3)
+    print(subprocess.check_output(command3, stderr=subprocess.STDOUT))
 
 def invalidate_cloudfront(distribution_ids):
     # invalidate the 2 distributions
